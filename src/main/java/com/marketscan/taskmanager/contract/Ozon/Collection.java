@@ -1,4 +1,4 @@
-package com.marketscan.taskmanager.contract.ozon;
+package com.marketscan.taskmanager.contract.Ozon;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;

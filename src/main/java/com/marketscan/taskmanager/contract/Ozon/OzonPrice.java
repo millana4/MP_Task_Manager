@@ -1,4 +1,4 @@
-package com.marketscan.taskmanager.contract.ozon;
+package com.marketscan.taskmanager.contract.Ozon;
 
 /**
  * Цены товара в рублях, числом (без символа валюты и разделителей).
