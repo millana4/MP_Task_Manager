@@ -1,0 +1,33 @@
+# Локальный стенд для разработки: Postgres + ClickHouse.
+# Запуск:   docker compose up -d
+# Остановка: docker compose down
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: tm-postgres
+    environment:
+      POSTGRES_DB: taskmanager
+      POSTGRES_USER: taskmanager
+      POSTGRES_PASSWORD: taskmanager
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: tm-clickhouse
+    environment:
+      CLICKHOUSE_DB: taskmanager
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ch-data:/var/lib/clickhouse
+
+volumes:
+  pg-data:
+  ch-data:
