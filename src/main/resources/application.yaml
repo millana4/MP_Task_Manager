@@ -2,6 +2,13 @@ spring:
   application:
     name: taskmanager
 
+  # --- JSON: как таск-менеджер и парсер сопоставляют имена полей ---
+  # Парсер (Python) отдаёт snake_case (card_price, reviews_count).
+  # Java-поля — camelCase (cardPrice). Эта стратегия переводит одно в другое
+  # автоматически в обе стороны (и при чтении ответов, и при отправке запросов).
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
   # --- Postgres: актуальное состояние сета ---
   # Порт 5433 — наш контейнерный Postgres (5432 занят системным Postgres).
   datasource:
