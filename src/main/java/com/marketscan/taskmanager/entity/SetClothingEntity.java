@@ -3,6 +3,7 @@ package com.marketscan.taskmanager.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -21,7 +22,8 @@ import java.util.UUID;
 public class SetClothingEntity {
 
     @Id
-    @Column(nullable = false, insertable = false)
+    @UuidGenerator
+    @Column(nullable = false, updatable = false)
     private UUID id;
 
     // Много страт относятся к одному сету. LAZY — сет подгружается

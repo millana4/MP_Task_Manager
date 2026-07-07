@@ -9,6 +9,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -28,7 +30,8 @@ import java.util.UUID;
 public class CardEntity {
 
     @Id
-    @Column(nullable = false, insertable = false)
+    @UuidGenerator
+    @Column(nullable = false, updatable = false)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -62,6 +65,7 @@ public class CardEntity {
     @Column(name = "dropped_at")
     private OffsetDateTime droppedAt;
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 }
