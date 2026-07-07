@@ -39,5 +39,10 @@ clickhouse:
   username: default
   password: "taskmanager"
 
+# --- Парсер Ozon (внешний сервис на FastAPI) ---
+parser:
+  ozon:
+    base-url: ${PARSER_OZON_URL:http://localhost:8010}
+
 server:
   port: 8080
