@@ -1,6 +1,8 @@
 package com.marketscan.taskmanager.controller;
 
+import com.marketscan.taskmanager.entity.CardEntity;
 import com.marketscan.taskmanager.entity.SetEntity;
+import com.marketscan.taskmanager.service.SetFillService;
 import com.marketscan.taskmanager.service.SetImportService;
 import com.marketscan.taskmanager.set_csv.StratumCsvParser;
 import com.marketscan.taskmanager.set_csv.StratumRow;
@@ -31,10 +33,14 @@ public class SetImportController {
 
     private final StratumCsvParser parser;
     private final SetImportService importService;
+    private final SetFillService fillService;
 
-    public SetImportController(StratumCsvParser parser, SetImportService importService) {
+    public SetImportController(StratumCsvParser parser,
+                               SetImportService importService,
+                               SetFillService fillService) {
         this.parser = parser;
         this.importService = importService;
+        this.fillService = fillService;
     }
 
     @PostMapping("/import")
@@ -70,6 +76,31 @@ public class SetImportController {
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Не удалось прочитать файл: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/fill")
+    public ResponseEntity<?> fillSet(@PathVariable("id") UUID setId) {
+        try {
+            // запускаем наполнение сета
+            int totalCards = fillService.fillSet(setId);
+
+            return ResponseEntity.ok(Map.of(
+                    "setId", setId.toString(),
+                    "totalCards", totalCards,
+                    "status", "success",
+                    "message", "Сет успешно наполнен карточками"
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage(),
+                    "setId", setId.toString()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Ошибка при наполнении сета: " + e.getMessage(),
+                    "setId", setId.toString()
+            ));
         }
     }
 }
