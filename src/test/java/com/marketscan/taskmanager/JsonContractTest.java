@@ -130,4 +130,23 @@ class JsonContractTest {
         assertEquals(1, resp.getCards().size());
         assertEquals("3974473087", resp.getCards().get(0).getSku());
     }
+
+    @Test
+    void cardResponseParsesFromParserJson() {
+        // Ответ card/by-id: обёртка ok + одна карточка. debug_files намеренно
+        // присутствует в JSON, но отсутствует в DTO — должен игнорироваться.
+        String json = """
+            {
+              "ok": true,
+              "card": { "sku": "3641521371", "name": "Платье", "price": { "price": 2990 } },
+              "debug_files": { "html": "dump.html" }
+            }
+            """;
+
+        CardResponse resp = mapper.readValue(json, CardResponse.class);
+
+        assertEquals(true, resp.getOk());
+        assertEquals("3641521371", resp.getCard().getSku());
+        assertEquals(2990.0, resp.getCard().getPrice().getPrice());
+    }
 }
