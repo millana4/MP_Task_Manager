@@ -37,7 +37,7 @@ spring:
 clickhouse:
   url: jdbc:clickhouse://localhost:8123/taskmanager
   username: default
-  password: ""
+  password: "taskmanager"
 
 server:
   port: 8080

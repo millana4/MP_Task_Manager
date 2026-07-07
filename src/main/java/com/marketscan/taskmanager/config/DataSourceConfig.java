@@ -1,6 +1,7 @@
 package com.marketscan.taskmanager.config;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -62,7 +63,9 @@ public class DataSourceConfig {
      * замеры. Репозитории ClickHouse (Этап 3–4) возьмут именно этот бин.
      */
     @Bean
-    public JdbcTemplate clickhouseJdbcTemplate(DataSource clickhouseDataSource) {
+    @Qualifier("clickhouseJdbcTemplate")
+    public JdbcTemplate clickhouseJdbcTemplate(
+            @Qualifier("clickhouseDataSource") DataSource clickhouseDataSource) {
         return new JdbcTemplate(clickhouseDataSource);
     }
 }

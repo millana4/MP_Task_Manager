@@ -21,7 +21,7 @@ services:
     environment:
       CLICKHOUSE_DB: taskmanager
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_PASSWORD: "taskmanager"
     ports:
       - "8123:8123"
       - "9000:9000"
