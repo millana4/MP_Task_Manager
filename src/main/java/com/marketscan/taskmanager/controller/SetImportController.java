@@ -1,7 +1,7 @@
 package com.marketscan.taskmanager.controller;
 
-import com.marketscan.taskmanager.entity.CardEntity;
 import com.marketscan.taskmanager.entity.SetEntity;
+import com.marketscan.taskmanager.service.SetFillKafkaService;
 import com.marketscan.taskmanager.service.SetFillService;
 import com.marketscan.taskmanager.service.SetImportService;
 import com.marketscan.taskmanager.set_csv.StratumCsvParser;
@@ -34,13 +34,16 @@ public class SetImportController {
     private final StratumCsvParser parser;
     private final SetImportService importService;
     private final SetFillService fillService;
+    private final SetFillKafkaService fillKafkaService;
 
     public SetImportController(StratumCsvParser parser,
                                SetImportService importService,
-                               SetFillService fillService) {
+                               SetFillService fillService,
+                               SetFillKafkaService fillKafkaService) {
         this.parser = parser;
         this.importService = importService;
         this.fillService = fillService;
+        this.fillKafkaService = fillKafkaService;
     }
 
     @PostMapping("/import")
@@ -101,6 +104,22 @@ public class SetImportController {
                     .body(Map.of("error", "Ошибка при наполнении сета: " + e.getMessage(),
                     "setId", setId.toString()
             ));
+        }
+    }
+
+    @PostMapping("/{id}/fill-async")
+    public ResponseEntity<?> fillSetAsync(@PathVariable("id") UUID setId) {
+        try {
+            int sent = fillKafkaService.startFill(setId);
+            return ResponseEntity.accepted().body(Map.of(
+                    "setId", setId.toString(),
+                    "tasksSent", sent,
+                    "status", "accepted",
+                    "message", "Наполнение запущено, задачи отправлены в очередь"
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage(), "setId", setId.toString()));
         }
     }
 }

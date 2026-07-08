@@ -32,6 +32,19 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      # Ключ и значение сообщения — строки (мы сами сериализуем в JSON).
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: taskmanager
+      # Начинать чтение с самых ранних непрочитанных сообщений.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
 # --- ClickHouse: отдельная база замеров. Настраивается вручную в коде,
 #     здесь только параметры подключения. Порт 8123 — HTTP-интерфейс. ---
 clickhouse:
