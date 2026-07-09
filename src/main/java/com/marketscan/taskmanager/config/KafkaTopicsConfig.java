@@ -35,4 +35,16 @@ public class KafkaTopicsConfig {
         return TopicBuilder.name("select.results.dlq")
                 .partitions(1).replicas(1).build();
     }
+
+    @Bean
+    public NewTopic parseTasksSpbTopic() {
+        return TopicBuilder.name("parse.tasks.spb")
+                .partitions(1).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic parseResultsSpbTopic() {
+        return TopicBuilder.name("parse.results.spb")
+                .partitions(1).replicas(1).build();
+    }
 }
