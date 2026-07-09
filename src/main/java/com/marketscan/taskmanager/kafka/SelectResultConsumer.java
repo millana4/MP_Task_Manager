@@ -32,6 +32,7 @@ public class SelectResultConsumer {
     private final SetClothingRepository stratumRepository;
     private final CardWriteService cardWriteService;
     private final FillBatchRegistry batchRegistry;
+    private final DlqProducer dlqProducer;
 
     private final JsonMapper mapper = JsonMapper.builder()
             .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
@@ -39,10 +40,11 @@ public class SelectResultConsumer {
 
     public SelectResultConsumer(SetClothingRepository stratumRepository,
                                 CardWriteService cardWriteService,
-                                FillBatchRegistry batchRegistry) {
+                                FillBatchRegistry batchRegistry, DlqProducer dlqProducer) {
         this.stratumRepository = stratumRepository;
         this.cardWriteService = cardWriteService;
         this.batchRegistry = batchRegistry;
+        this.dlqProducer = dlqProducer;
     }
 
     /**
@@ -55,7 +57,7 @@ public class SelectResultConsumer {
         try {
             result = mapper.readValue(json, SelectResultMessage.class);
         } catch (Exception e) {
-            log.error("Не разобрать результат подбора: {}", e.getMessage());
+            dlqProducer.sendToDlq(json, "Не разобрать результат: " + e.getMessage());
             return;  // битое сообщение пропускаем, не застреваем
         }
 

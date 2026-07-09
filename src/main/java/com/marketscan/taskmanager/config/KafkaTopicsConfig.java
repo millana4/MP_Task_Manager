@@ -29,4 +29,10 @@ public class KafkaTopicsConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic selectResultsDlqTopic() {
+        return TopicBuilder.name("select.results.dlq")
+                .partitions(1).replicas(1).build();
+    }
 }

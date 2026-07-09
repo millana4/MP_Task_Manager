@@ -1,9 +1,12 @@
 package com.marketscan.taskmanager.service;
 
+import com.marketscan.taskmanager.contract.Ozon.ExcludedCard;
+import com.marketscan.taskmanager.entity.CardEntity;
 import com.marketscan.taskmanager.entity.SetClothingEntity;
 import com.marketscan.taskmanager.entity.SetEntity;
 import com.marketscan.taskmanager.kafka.SelectTaskMessage;
 import com.marketscan.taskmanager.kafka.SelectTaskProducer;
+import com.marketscan.taskmanager.repository.CardRepository;
 import com.marketscan.taskmanager.repository.SetClothingRepository;
 import com.marketscan.taskmanager.repository.SetRepository;
 import org.slf4j.Logger;
@@ -12,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,19 +36,20 @@ public class SetFillKafkaService {
     private final SetClothingRepository stratumRepository;
     private final SelectTaskProducer taskProducer;
     private final FillBatchRegistry batchRegistry;
-
+    private final CardRepository cardRepository;
     // Таймаут партии — настраиваемый, по умолчанию 4 часа.
     private final Duration batchTimeout;
 
     public SetFillKafkaService(SetRepository setRepository,
                                SetClothingRepository stratumRepository,
                                SelectTaskProducer taskProducer,
-                               FillBatchRegistry batchRegistry,
+                               FillBatchRegistry batchRegistry, CardRepository cardRepository,
                                @Value("${taskmanager.fill.batch-timeout:PT4H}") Duration batchTimeout) {
         this.setRepository = setRepository;
         this.stratumRepository = stratumRepository;
         this.taskProducer = taskProducer;
         this.batchRegistry = batchRegistry;
+        this.cardRepository = cardRepository;
         this.batchTimeout = batchTimeout;
     }
 
@@ -77,7 +82,9 @@ public class SetFillKafkaService {
             task.setIsSeasonal(stratum.getIsSeasonal());
             task.setBaseShare(stratum.getBaseShare() != null
                     ? stratum.getBaseShare().doubleValue() : null);
-            task.setExclude(List.of());  // первое наполнение — исключать нечего
+            // exclude = уже собранные карточки страты. При первом наполнении их нет
+            // (пустой список), при доборе — парсер не повторит собранное.
+            task.setExclude(buildExclude(stratum.getId()));
 
             taskProducer.send(task);
             sent++;
@@ -85,5 +92,22 @@ public class SetFillKafkaService {
 
         log.info("Наполнение сета {} запущено: отправлено {} задач", setId, sent);
         return sent;
+    }
+
+    // Собрать exclude для страты — карточки, которые уже есть (по sku/seller).
+    private List<ExcludedCard> buildExclude(UUID stratumId) {
+        List<CardEntity> existing = cardRepository.findByStratumId(stratumId);
+        List<ExcludedCard> exclude = new ArrayList<>();
+        for (CardEntity c : existing) {
+            ExcludedCard ex = new ExcludedCard();
+            ex.setSku(c.getSku());
+            ex.setName(c.getName());
+            ex.setUrl(c.getUrl());
+            ex.setSeller(c.getSellerId());     // seller = id магазина
+            // collection в exclude не нужен парсеру для отсева дублей (он по seller/sku)
+            ex.setCollection(null);
+            exclude.add(ex);
+        }
+        return exclude;
     }
 }
