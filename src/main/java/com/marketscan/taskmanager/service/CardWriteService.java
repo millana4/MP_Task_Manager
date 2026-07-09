@@ -51,7 +51,7 @@ public class CardWriteService {
         entity.setName(card.getName());
         entity.setUrl(card.getUrl());
         entity.setSellerId(card.getSeller() != null ? card.getSeller().getId() : null);
-        entity.setCollection(null);   // коллекцию заполним позже (заглушка)
+        entity.setCollection(resolveCollection(card));
         entity.setStatus("active");
         entity.setFailedAttempts(0);
         CardEntity savedCard = cardRepository.save(entity);
@@ -104,5 +104,14 @@ public class CardWriteService {
         if (s == null || s.isBlank()) return null;
         try { return Integer.parseInt(s.trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    // Коллекция карточки — из характеристик по ключу "Коллекция", как есть.
+    // Парсер сам разбирает формы ("Весна-лето 2026", "Весна" и т.д.).
+    private String resolveCollection(OzonCard card) {
+        if (card.getCharacteristics() == null) {
+            return null;
+        }
+        return card.getCharacteristics().get("Коллекция");
     }
 }

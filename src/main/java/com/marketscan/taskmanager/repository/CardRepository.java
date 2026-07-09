@@ -14,6 +14,8 @@ public interface CardRepository extends JpaRepository<CardEntity, UUID> {
     // Все карточки страты.
     List<CardEntity> findByStratumId(UUID stratumId);
 
+    List<CardEntity> findByStatus(String status);
+
     // Активные карточки страты — понадобится для периодического обхода
     // (парсим только те, что в продаже).
     List<CardEntity> findByStratumIdAndStatus(UUID stratumId, String status);

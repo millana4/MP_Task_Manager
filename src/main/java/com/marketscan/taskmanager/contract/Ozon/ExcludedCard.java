@@ -16,5 +16,5 @@ public class ExcludedCard {
     private String name;            // полное название
     private String url;             // URL/slug - проверка дублей
     private String seller;           // магазин - у новых должен отличаться
-    private Collection collection;  // base / spring_summer / autumn_winter
+    private String collection;
 }

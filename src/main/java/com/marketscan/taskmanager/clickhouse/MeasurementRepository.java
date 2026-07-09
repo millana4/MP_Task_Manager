@@ -68,12 +68,18 @@ public class MeasurementRepository {
                         .parsedAt(rs.getObject("parsed_at", java.time.LocalDateTime.class)
                                 .atOffset(java.time.ZoneOffset.UTC))
                         .geo(rs.getString("geo"))
-                        .cardPrice((Double) rs.getObject("card_price"))
-                        .price((Double) rs.getObject("price"))
-                        .originalPrice((Double) rs.getObject("original_price"))
-                        .quantity((Integer) rs.getObject("quantity"))
-                        .rating((Float) rs.getObject("rating"))
-                        .reviewsCount((Integer) rs.getObject("reviews_count"))
+                        .cardPrice(rs.getObject("card_price") != null
+                                ? ((Number) rs.getObject("card_price")).doubleValue() : null)
+                        .price(rs.getObject("price") != null
+                                ? ((Number) rs.getObject("price")).doubleValue() : null)
+                        .originalPrice(rs.getObject("original_price") != null
+                                ? ((Number) rs.getObject("original_price")).doubleValue() : null)
+                        .quantity(rs.getObject("quantity") != null
+                                ? ((Number) rs.getObject("quantity")).intValue() : null)
+                        .rating(rs.getObject("rating") != null
+                                ? ((Number) rs.getObject("rating")).floatValue() : null)
+                        .reviewsCount(rs.getObject("reviews_count") != null
+                                ? ((Number) rs.getObject("reviews_count")).intValue() : null)
                         .build(),
                 cardId);
     }
