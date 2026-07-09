@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Доступ к временному ряду замеров в ClickHouse.
@@ -53,5 +54,27 @@ public class MeasurementRepository {
                 cardId
         );
         return count != null ? count : 0L;
+    }
+
+    /** Временной ряд замеров карточки, по возрастанию времени. */
+    public List<Measurement> findByCardId(UUID cardId) {
+        return clickhouse.query(
+                "SELECT card_id, sku, parsed_at, geo, card_price, price, " +
+                        "original_price, quantity, rating, reviews_count " +
+                        "FROM measurement WHERE card_id = ? ORDER BY parsed_at",
+                (rs, rowNum) -> Measurement.builder()
+                        .cardId(UUID.fromString(rs.getString("card_id")))
+                        .sku(rs.getString("sku"))
+                        .parsedAt(rs.getObject("parsed_at", java.time.LocalDateTime.class)
+                                .atOffset(java.time.ZoneOffset.UTC))
+                        .geo(rs.getString("geo"))
+                        .cardPrice((Double) rs.getObject("card_price"))
+                        .price((Double) rs.getObject("price"))
+                        .originalPrice((Double) rs.getObject("original_price"))
+                        .quantity((Integer) rs.getObject("quantity"))
+                        .rating((Float) rs.getObject("rating"))
+                        .reviewsCount((Integer) rs.getObject("reviews_count"))
+                        .build(),
+                cardId);
     }
 }
