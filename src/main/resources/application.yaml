@@ -12,9 +12,9 @@ spring:
   # --- Postgres: актуальное состояние сета ---
   # Порт 5433 — наш контейнерный Postgres (5432 занят системным Postgres).
   datasource:
-    url: jdbc:postgresql://localhost:5433/taskmanager
-    username: taskmanager
-    password: taskmanager
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/taskmanager}
+    username: ${SPRING_DATASOURCE_USERNAME:taskmanager}
+    password: ${SPRING_DATASOURCE_PASSWORD:taskmanager}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -22,9 +22,6 @@ spring:
       # Схемой управляет Flyway, а не Hibernate. validate = Hibernate только
       # сверяет соответствие сущностей реальной схеме, но сам её не меняет.
       ddl-auto: validate
-    properties:
-      hibernate:
-        format_sql: true
     open-in-view: false
 
   # --- Flyway: миграции схемы Postgres ---
@@ -48,14 +45,23 @@ spring:
 # --- ClickHouse: отдельная база замеров. Настраивается вручную в коде,
 #     здесь только параметры подключения. Порт 8123 — HTTP-интерфейс. ---
 clickhouse:
-  url: jdbc:clickhouse://localhost:8123/taskmanager
-  username: default
-  password: "taskmanager"
+  url: ${CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/taskmanager}
+  username: ${CLICKHOUSE_USERNAME:default}
+  password: ${CLICKHOUSE_PASSWORD:taskmanager}
 
 # --- Парсер Ozon (внешний сервис на FastAPI) ---
 parser:
   ozon:
     base-url: ${PARSER_OZON_URL:http://localhost:8010}
+    api-key: ${PARSER_API_KEY:}
+
+logging:
+  level:
+    root: INFO
+    com.marketscan.taskmanager: INFO
+    org.hibernate.SQL: WARN
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
 
 server:
   port: 8080

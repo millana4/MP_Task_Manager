@@ -1,6 +1,9 @@
-# Локальный стенд для разработки: Postgres + ClickHouse.
-# Запуск:   docker compose up -d
+# Ядро таск-менеджера: Postgres + ClickHouse + Kafka + приложение.
+# Парсер — отдельный docker-compose, общается через Kafka.
+#
+# Запуск:    docker compose up -d --build
 # Остановка: docker compose down
+# Логи:      docker compose logs -f taskmanager
 
 services:
   postgres:
@@ -9,11 +12,21 @@ services:
     environment:
       POSTGRES_DB: taskmanager
       POSTGRES_USER: taskmanager
-      POSTGRES_PASSWORD: taskmanager
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: "Europe/Moscow"
+    # Порт наружу НЕ пробрасываем — Postgres доступен только внутри compose.
+    # Для дампов/отладки с хоста раскомментируй временно:
+    # ports:
+    #   - "5433:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
+      - ./backups:/backups
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskmanager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -21,32 +34,76 @@ services:
     environment:
       CLICKHOUSE_DB: taskmanager
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: "taskmanager"
-    ports:
-      - "8123:8123"
-      - "9000:9000"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      TZ: "Europe/Moscow"
+    # Порты наружу НЕ пробрасываем. Для отладки с хоста раскомментируй:
+    # ports:
+    #   - "8123:8123"
     volumes:
       - ch-data:/var/lib/clickhouse
+      - ./backups:/backups
+      - ./docker/clickhouse-init:/docker-entrypoint-initdb.d   # авто-накат схемы при первом старте
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
 
   kafka:
     image: confluentinc/cp-kafka:7.7.1
     container_name: tm-kafka
     ports:
-      - "9092:9092"
+      - "9092:9092"          # нужен наружу — к нему подключается парсер
     environment:
-      # Режим KRaft (без ZooKeeper) — Kafka сама себе координатор.
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@tm-kafka:29093"
       KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://tm-kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://tm-kafka:29092,PLAINTEXT_HOST://host.docker.internal:9092"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      TZ: "Europe/Moscow"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  taskmanager:
+    build: .
+    container_name: tm-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"          # API наружу
+    environment:
+      KAFKA_BOOTSTRAP: "tm-kafka:29092"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://tm-postgres:5432/taskmanager"
+      SPRING_DATASOURCE_USERNAME: "taskmanager"
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      CLICKHOUSE_URL: "jdbc:clickhouse://tm-clickhouse:8123/taskmanager"
+      CLICKHOUSE_USERNAME: "default"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      PARSER_OZON_URL: "http://host.docker.internal:8010"
+      PARSER_API_KEY: ${PARSER_API_KEY}
+      TZ: "Europe/Moscow"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   pg-data:
   ch-data:
+  kafka-data:

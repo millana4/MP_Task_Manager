@@ -21,21 +21,26 @@ public class RestClientConfig {
 
     @Bean
     public RestClient ozonParserRestClient(
-            @Value("${parser.ozon.base-url}") String baseUrl) {
-        // Отдельный JsonMapper со snake_case: парсер ждёт is_seasonal / base_share,
-        // а наши поля — isSeasonal / baseShare. Эта стратегия переводит одно в другое
-        // для всех запросов и ответов клиента.
+            @Value("${parser.ozon.base-url}") String baseUrl,
+            @Value("${parser.ozon.api-key:}") String apiKey) {
+
         JsonMapper snakeMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .build();
 
-        return RestClient.builder()
+        RestClient.Builder builder = RestClient.builder()
                 .baseUrl(baseUrl)
                 .messageConverters(converters -> {
-                    // Убираем стандартный JSON-конвертер и ставим свой со snake_case.
                     converters.removeIf(c -> c instanceof JacksonJsonHttpMessageConverter);
                     converters.add(0, new JacksonJsonHttpMessageConverter(snakeMapper));
-                })
-                .build();
+                });
+
+        // Межсервисный ключ: парсер требует Authorization: Bearer <ключ>.
+        // Если ключ задан — добавляем заголовок ко всем запросам клиента.
+        if (apiKey != null && !apiKey.isBlank()) {
+            builder.defaultHeader("Authorization", "Bearer " + apiKey);
+        }
+
+        return builder.build();
     }
 }
