@@ -70,11 +70,14 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
-      interval: 10s
+      test: [ "CMD-SHELL", "kafka-topics --bootstrap-server tm-kafka:29092 --list || exit 1" ]
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 20
+      start_period: 90s
 
   taskmanager:
     build: .
