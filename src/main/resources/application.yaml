@@ -58,7 +58,7 @@ parser:
 logging:
   level:
     root: INFO
-    com.marketscan.taskmanager: INFO
+    com.mercator.taskmanager: INFO
     org.hibernate.SQL: WARN
     org.apache.kafka: WARN
     org.springframework.kafka: WARN
