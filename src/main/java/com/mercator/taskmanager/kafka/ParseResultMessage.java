@@ -17,4 +17,5 @@ public class ParseResultMessage {
     private Boolean ok;
     private OzonCard card;
     private String error;
+    private String errorCode;
 }

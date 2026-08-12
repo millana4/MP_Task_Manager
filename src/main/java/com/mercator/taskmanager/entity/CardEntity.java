@@ -62,6 +62,9 @@ public class CardEntity {
     @Column(name = "unavailable_since")
     private OffsetDateTime unavailableSince;
 
+    @Column(name = "out_of_stock_since")
+    private OffsetDateTime outOfStockSince;
+
     @Column(name = "dropped_at")
     private OffsetDateTime droppedAt;
 

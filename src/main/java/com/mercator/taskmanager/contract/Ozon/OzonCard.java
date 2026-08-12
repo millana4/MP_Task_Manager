@@ -29,6 +29,10 @@ public class OzonCard {
     private OzonPrice price;
     private Integer quantity;   // количество/остаток, если указано
 
+    // Состояние кнопки покупки (из парсера): in_cart / out_of_stock /
+    // not_found / unknown. Надёжный признак активности карточки.
+    private String buttonState;
+
     // Оценки (парсер отдаёт строками: "4.9", "103")
     private String rating;
     private String reviewsCount;  // reviews_count

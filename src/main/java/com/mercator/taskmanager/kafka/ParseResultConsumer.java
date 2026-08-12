@@ -53,16 +53,33 @@ public class ParseResultConsumer {
             return;
         }
 
-        // Карточка не ответила — фиксируем неудачу.
+        // Карточка не ответила — разбираемся, чья это проблема.
         if (Boolean.FALSE.equals(result.getOk()) || result.getCard() == null) {
+            // Антибот/капча — сбой сборщика, карточку не штрафуем.
+            if ("antibot_blocked".equals(result.getErrorCode())) {
+                log.warn("Обход card_id={} пропущен: антибот (карточка не штрафуется)",
+                        result.getCardId());
+                monitoringCycle.recordResult();
+                return;
+            }
             log.warn("Обход card_id={} неуспешен: {}", result.getCardId(), result.getError());
             lifecycle.markFailure(result.getCardId());
             monitoringCycle.recordResult();
             return;
         }
 
-        // Успех: дописываем свежий замер.
         var card = result.getCard();
+        String buttonState = card.getButtonState();
+
+        // Страница удалена (404) — списываем сразу, замер не пишем.
+        if ("not_found".equals(buttonState)) {
+            log.info("Обход card_id={}: страница удалена (404)", result.getCardId());
+            lifecycle.markNotFound(result.getCardId());
+            monitoringCycle.recordResult();
+            return;
+        }
+
+        // Успех: пишем замер (в т.ч. для out_of_stock — факт отсутствия ценен).
         Measurement m = Measurement.builder()
                 .cardId(result.getCardId())
                 .sku(result.getSku())
@@ -77,9 +94,17 @@ public class ParseResultConsumer {
                 .build();
         measurementRepository.insert(m);
 
-        lifecycle.markSuccess(result.getCardId());
+        // Обновляем жизненный цикл по состоянию кнопки.
+        if ("out_of_stock".equals(buttonState)) {
+            lifecycle.markOutOfStock(result.getCardId());
+            log.info("Обход card_id={}: нет в наличии, замер записан", result.getCardId());
+        } else {
+            // in_cart или unknown с заполненными данными — считаем живой.
+            lifecycle.markInStock(result.getCardId());
+            log.info("Обход card_id={}: замер записан (button_state={})",
+                    result.getCardId(), buttonState);
+        }
         monitoringCycle.recordResult();
-        log.info("Обход card_id={}: замер записан", result.getCardId());
     }
 
     private Float parseFloat(String s) {
