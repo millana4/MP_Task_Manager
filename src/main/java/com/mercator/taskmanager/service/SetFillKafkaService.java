@@ -94,6 +94,52 @@ public class SetFillKafkaService {
         return sent;
     }
 
+    /**
+     * Добор недостающих карточек по всем стратам всех сетов.
+     * По каждой страте: если (active + stale) < count — запросить подбор на
+     * недостающее, с exclude уже известных (включая dropped, чтобы не
+     * подбирать повторно выбывшие sku). Партию НЕ открываем — это фоновой
+     * добор, а не первичное наполнение.
+     *
+     * @return сколько задач добора отправлено.
+     */
+    public int refillDeficits() {
+        List<SetEntity> sets = setRepository.findAll();
+        int sent = 0;
+        for (SetEntity set : sets) {
+            List<SetClothingEntity> strata = stratumRepository.findBySetId(set.getId());
+            for (SetClothingEntity stratum : strata) {
+                int active = cardRepository
+                        .findByStratumIdAndStatus(stratum.getId(), "active").size();
+                int deficit = stratum.getCount() - active;
+                if (deficit <= 0) {
+                    continue;
+                }
+                SelectTaskMessage task = new SelectTaskMessage();
+                task.setTaskId(UUID.randomUUID());
+                task.setSetId(set.getId());
+                task.setStratumId(stratum.getId());
+                task.setGeo(set.getGeo());
+                task.setQuery(stratum.getQuery());
+                task.setCount(deficit);                       // только недостающее
+                task.setIsSeasonal(stratum.getIsSeasonal());
+                task.setBaseShare(stratum.getBaseShare() != null
+                        ? stratum.getBaseShare().doubleValue() : null);
+                task.setExclude(buildExclude(stratum.getId()));
+                taskProducer.send(task);
+                sent++;
+                log.info("Добор страты {} ({}): недостаёт {} (active={}, need={})",
+                        stratum.getId(), stratum.getQuery(), deficit, active, stratum.getCount());
+            }
+        }
+        if (sent > 0) {
+            log.info("Добор запущен: отправлено {} задач", sent);
+        } else {
+            log.debug("Добор: дефицитов нет, все страты укомплектованы");
+        }
+        return sent;
+    }
+
     // Собрать exclude для страты — карточки, которые уже есть (по sku/seller).
     private List<ExcludedCard> buildExclude(UUID stratumId) {
         List<CardEntity> existing = cardRepository.findByStratumId(stratumId);
