@@ -7,12 +7,15 @@ import com.mercator.taskmanager.clickhouse.MeasurementRepository;
 import com.mercator.taskmanager.contract.Ozon.OzonCard;
 import com.mercator.taskmanager.entity.CardEntity;
 import com.mercator.taskmanager.entity.SetClothingEntity;
+import com.mercator.taskmanager.kafka.SelectResultConsumer;
 import com.mercator.taskmanager.repository.CardRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Запись одной подобранной/распарсенной карточки в три базы:
@@ -29,6 +32,7 @@ public class CardWriteService {
     private final MeasurementRepository measurementRepository;
     private final CardSnapshotRepository snapshotRepository;
     private final JsonHelper json;
+    private static final Logger log = LoggerFactory.getLogger(CardWriteService.class);
 
     public CardWriteService(CardRepository cardRepository,
                             MeasurementRepository measurementRepository,
@@ -42,6 +46,15 @@ public class CardWriteService {
 
     /** Записать карточку под стратой, с гео для замера. */
     public void saveCard(SetClothingEntity stratum, String geo, OzonCard card) {
+        // Инвариант: один sku в сете максимум один раз. Если такой sku уже
+        // есть (в этой или другой страте сета) — не пишем дубль.
+        UUID setId = stratum.getSet().getId();
+        if (cardRepository.existsByStratumSetIdAndSku(setId, card.getSku())) {
+            log.warn("Дубль sku={} в сете {} — карточка не записана (уже есть)",
+                    card.getSku(), setId);
+            return;
+        }
+
         OffsetDateTime now = OffsetDateTime.now();
 
         // 1. Postgres: паспорт карточки (даёт UUID).

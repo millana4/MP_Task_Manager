@@ -140,19 +140,25 @@ public class SetFillKafkaService {
         return sent;
     }
 
-    // Собрать exclude для страты — карточки, которые уже есть (по sku/seller).
+    // Собрать exclude для страты. Инвариант: sku уникален в пределах СЕТА,
+    // поэтому исключаем карточки всех страт сета (не только текущей), чтобы
+    // парсер не подобрал sku, уже занятый в соседней страте.
     private List<ExcludedCard> buildExclude(UUID stratumId) {
-        List<CardEntity> existing = cardRepository.findByStratumId(stratumId);
+        SetClothingEntity stratum = stratumRepository.findById(stratumId)
+                .orElseThrow(() -> new IllegalArgumentException("Страта не найдена: " + stratumId));
+        UUID setId = stratum.getSet().getId();
+
         List<ExcludedCard> exclude = new ArrayList<>();
-        for (CardEntity c : existing) {
-            ExcludedCard ex = new ExcludedCard();
-            ex.setSku(c.getSku());
-            ex.setName(c.getName());
-            ex.setUrl(c.getUrl());
-            ex.setSeller(c.getSellerId());     // seller = id магазина
-            // collection в exclude не нужен парсеру для отсева дублей (он по seller/sku)
-            ex.setCollection(null);
-            exclude.add(ex);
+        for (SetClothingEntity s : stratumRepository.findBySetId(setId)) {
+            for (CardEntity c : cardRepository.findByStratumId(s.getId())) {
+                ExcludedCard ex = new ExcludedCard();
+                ex.setSku(c.getSku());
+                ex.setName(c.getName());
+                ex.setUrl(c.getUrl());
+                ex.setSeller(c.getSellerId());
+                ex.setCollection(null);
+                exclude.add(ex);
+            }
         }
         return exclude;
     }

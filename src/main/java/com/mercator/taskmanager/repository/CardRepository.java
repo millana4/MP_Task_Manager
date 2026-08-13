@@ -19,4 +19,7 @@ public interface CardRepository extends JpaRepository<CardEntity, UUID> {
     // Активные карточки страты — понадобится для периодического обхода
     // (парсим только те, что в продаже).
     List<CardEntity> findByStratumIdAndStatus(UUID stratumId, String status);
+
+    // Есть ли уже карточка с таким sku в этом сете, в любой его страте
+    boolean existsByStratumSetIdAndSku(UUID setId, String sku);
 }
