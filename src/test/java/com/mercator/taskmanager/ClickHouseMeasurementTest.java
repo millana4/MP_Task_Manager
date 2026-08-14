@@ -3,8 +3,10 @@ package com.mercator.taskmanager;
 import com.mercator.taskmanager.clickhouse.Measurement;
 import com.mercator.taskmanager.clickhouse.MeasurementRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -16,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * tm-clickhouse (на 8123, как в application.yml), пишет замер и проверяет,
  * что он записался. Требует запущенного docker compose.
  */
+@Tag("integration")
+@ActiveProfiles("test")
 @SpringBootTest
 class ClickHouseMeasurementTest {
 

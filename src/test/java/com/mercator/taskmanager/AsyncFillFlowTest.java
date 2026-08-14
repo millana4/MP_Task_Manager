@@ -1,5 +1,6 @@
 package com.mercator.taskmanager;
 
+import com.mercator.taskmanager.entity.CardEntity;
 import com.mercator.taskmanager.entity.SetClothingEntity;
 import com.mercator.taskmanager.entity.SetEntity;
 import com.mercator.taskmanager.repository.CardRepository;
@@ -9,8 +10,11 @@ import com.mercator.taskmanager.service.FillBatch;
 import com.mercator.taskmanager.service.FillBatchRegistry;
 import com.mercator.taskmanager.service.SetFillKafkaService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.Duration;
 import java.util.List;
@@ -30,6 +34,13 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * Требует запущенных Kafka, Postgres, ClickHouse. Настоящий парсер НЕ нужен.
  */
+@Tag("integration")
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "spring.kafka.consumer.enabled=true",
+        "spring.kafka.producer.enabled=true",
+        "spring.kafka.listener.auto-startup=true"
+})
 @SpringBootTest
 class AsyncFillFlowTest {
 
@@ -76,6 +87,11 @@ class AsyncFillFlowTest {
         assertEquals(2, totalCards, "Должно записаться 2 карточки");
 
         // 5. Убираем за собой.
+        strata.forEach(s -> {
+            List<CardEntity> cards = cardRepository.findByStratumId(s.getId());
+            cardRepository.deleteAll(cards);
+        });
+        stratumRepository.deleteAll(strata);
         setRepository.deleteById(savedSet.getId());
     }
 

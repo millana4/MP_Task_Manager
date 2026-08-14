@@ -8,6 +8,8 @@ import com.mercator.taskmanager.set_csv.StratumCsvParser;
 import com.mercator.taskmanager.set_csv.StratumRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
@@ -22,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * Наследует PostgresTestBase — поднимает временный Postgres через Testcontainers.
  */
+@ActiveProfiles("test")
 class SetImportServiceTest extends PostgresTestBase {
 
     @Autowired StratumCsvParser parser;

@@ -7,9 +7,12 @@ import com.mercator.taskmanager.repository.CardRepository;
 import com.mercator.taskmanager.repository.SetClothingRepository;
 import com.mercator.taskmanager.repository.SetRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.Duration;
 import java.util.List;
@@ -26,6 +29,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * Требует запущенных Kafka, Postgres, ClickHouse. Парсер НЕ нужен —
  * его роль играем сами, отправляя готовый JSON результата.
  */
+@Tag("integration")
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "spring.kafka.consumer.enabled=true",
+        "spring.kafka.producer.enabled=true",
+        "spring.kafka.listener.auto-startup=true"
+})
 @SpringBootTest
 class SelectResultConsumerTest {
 
@@ -100,6 +110,12 @@ class SelectResultConsumerTest {
         });
 
         // 5. Убираем за собой.
+        List<SetClothingEntity> strata = stratumRepository.findBySetId(savedSet.getId());
+        strata.forEach(s -> {
+            List<CardEntity> cards = cardRepository.findByStratumId(s.getId());
+            cardRepository.deleteAll(cards);
+        });
+        stratumRepository.deleteAll(strata);
         setRepository.deleteById(savedSet.getId());
     }
 }

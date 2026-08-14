@@ -3,8 +3,10 @@ package com.mercator.taskmanager;
 import com.mercator.taskmanager.kafka.SelectTaskProducer;
 import com.mercator.taskmanager.kafka.SelectTaskMessage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,6 +16,8 @@ import java.util.UUID;
  * Проверяем факт отправки без ошибок; содержимое топика посмотрим
  * консольной командой Kafka после теста.
  */
+@Tag("integration")
+@ActiveProfiles("test")
 @SpringBootTest
 class SelectTaskProducerTest {
 

@@ -49,3 +49,24 @@ dependencies {
 tasks.withType<Test> {
 	useJUnitPlatform()
 }
+
+// Обычный ./gradlew test — только быстрые тесты без внешней инфраструктуры.
+// Живые интеграционные (Kafka/ClickHouse/Postgres вживую) помечены @Tag("integration")
+// и по умолчанию пропускаются.
+tasks.named<Test>("test") {
+	useJUnitPlatform {
+		excludeTags("integration")
+	}
+}
+
+// Запуск только живых интеграционных: ./gradlew integrationTest
+// Требует поднятого docker compose (Kafka, ClickHouse) — как раньше.
+tasks.register<Test>("integrationTest") {
+	description = "Живые интеграционные тесты (нужна поднятая инфраструктура)"
+	group = "verification"
+	testClassesDirs = sourceSets["test"].output.classesDirs
+	classpath = sourceSets["test"].runtimeClasspath
+	useJUnitPlatform {
+		includeTags("integration")
+	}
+}

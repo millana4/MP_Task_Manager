@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/taskmanager
+    username: taskmanager
+    password: localtest
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false
+  kafka:
+    consumer:
+      enabled: false
+    producer:
+      enabled: false
+    listener:
+      auto-startup: false
+clickhouse:
+  url: jdbc:clickhouse://localhost:8123/taskmanager?user=default&password=localtest
+  username: default
+  password: localtest
+main:
+  allow-bean-definition-overriding: true

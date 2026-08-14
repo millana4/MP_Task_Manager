@@ -3,8 +3,10 @@ package com.mercator.taskmanager;
 import com.mercator.taskmanager.clickhouse.Measurement;
 import com.mercator.taskmanager.clickhouse.MeasurementRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -17,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * читаем ряд — должны прийти все 3 по возрастанию времени.
  * Живой ClickHouse.
  */
+@Tag("integration")
+@ActiveProfiles("test")
 @SpringBootTest
 class MeasurementSeriesTest {
 

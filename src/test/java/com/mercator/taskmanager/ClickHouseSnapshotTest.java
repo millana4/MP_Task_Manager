@@ -3,8 +3,10 @@ package com.mercator.taskmanager;
 import com.mercator.taskmanager.clickhouse.CardSnapshot;
 import com.mercator.taskmanager.clickhouse.CardSnapshotRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -18,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Map (характеристики) и Array (вектор) — пишутся корректно.
  * Подключается к реальному tm-clickhouse.
  */
+@Tag("integration")
+@ActiveProfiles("test")
 @SpringBootTest
 class ClickHouseSnapshotTest {
 
