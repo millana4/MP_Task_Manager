@@ -39,7 +39,7 @@ public class KafkaTopicsConfig {
     @Bean
     public NewTopic parseTasksSpbTopic() {
         return TopicBuilder.name("parse.tasks.spb")
-                .partitions(1).replicas(1).build();
+                .partitions(3).replicas(1).build();
     }
 
     @Bean

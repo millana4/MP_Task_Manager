@@ -107,8 +107,7 @@ docker ps
 ### 2.4 Проверить логи воркера
 
 Воркер сейчас будет пытаться подключиться к Kafka, которой ещё нет (ядро не
-поднято) — это нормально, он ждёт и переподключается. Полноценно проверим после
-ядра. Пока просто глянь, что воркер запустил консьюмер, а не uvicorn:
+поднято) — это нормально, он ждёт и переподключается.
 
 ```bash
 docker logs mercator_parser-worker-1 --tail 30
@@ -117,9 +116,6 @@ docker logs mercator_parser-worker-1 --tail 30
 Должно быть `=== Запуск Ozon Kafka-воркера ===` и попытки подключения к
 `host.docker.internal:9092` (пока с ошибками — Kafka ещё нет, это ОК).
 
-**Если видишь uvicorn вместо воркера** — грабля 3 (entrypoint). **Если
-`ModuleNotFoundError kafka`** — грабля 2 (requirements). **Если ошибка про
-`int() 'port'`** — грабля 1 (`.env`, адрес Kafka).
 
 ---
 
@@ -197,7 +193,7 @@ docker compose ps
 ```
 
 Все четыре должны быть `Up`: `tm-postgres (healthy)`, `tm-clickhouse`,
-`tm-kafka (healthy)`, `tm-app`. 
+`tm-kafka (healthy)`, `tm-app`.
 
 Логи таск-менеджера:
 
@@ -341,7 +337,7 @@ docker logs mercator_parser-worker-1 -f --tail 20
 
 `Ctrl+C` — выйти из слежения (контейнеры продолжат работать).
 
-Сбор медленный: ~48 сек на карточку (Selenium). 59 страт — часы. Это нормально.
+Сбор медленный: около минуты на карточку. Десятки страт — часы. Это нормально.
 
 ---
 
@@ -385,7 +381,7 @@ docker exec tm-clickhouse clickhouse-client --database taskmanager \
 
 ---
 
-## ЧАСТЬ 6. Автоматические резервные копии
+## ЧАСТЬ 7. Автоматические резервные копии
 
 Еженедельный дамп обеих баз на сервере + автозабор на локальный компьютер.
 Данные и так в volumes переживают перезапуск.
@@ -521,9 +517,6 @@ crontab -e
 0 12 * * 1 /home/твой-юзер/mercator-backups/pull-backups.sh >> /home/твой-юзер/mercator-backups/pull.log 2>&1
 ```
 
-Нюанс: cron на ноутбуке сработает, только если он включён в это время. Если
-спит — задание пропустится. Ставь время, когда ноут обычно работает, или
-запускай `pull-backups.sh` вручную при необходимости (rsync докачает новое).
 
 ### Ручной дамп и восстановление
 
@@ -538,7 +531,7 @@ cat backups/pg_ГГГГММДД_ЧЧММ.sql | docker exec -i -e PGPASSWORD="$PO
 
 ---
 
-## ЧАСТЬ 7. Логи
+## ЧАСТЬ 8. Логи
 
 ### Логи таск-менеджера
 
@@ -601,6 +594,132 @@ docker compose logs taskmanager | grep -c "Результат подбора"
 ```
 ---
 
+## ЧАСТЬ 9. Мультипарсер (несколько парсеров на разных IP)
+
+Парсер можно развернуть в нескольких экземплярах, каждый со своим внешним
+IP. Все они читают общий топик задач `parse.tasks.spb` из одной consumer-группы
+`ozon-parser-spb` — Kafka сама раздаёт партиции между воркерами.
+
+Рабочая схема: **2 primary + 1 reserve** (три внешних IP). Primary работают в
+обычном темпе, reserve — в щадящем (бережёт последний свободный IP, ~1 обход в
+сутки в фоне). Роль задаётся в `.env` каждого экземпляра (`PARSER_ROLE`).
+
+### 9.1 Подготовить топик задач
+
+Топик `parse.tasks.spb` должен иметь число партиций не меньше числа воркеров
+(для схемы 2+1 — 3 партиции). При чистом развёртывании это обеспечивает
+`KafkaTopicsConfig` в ядре. Проверить на сервере:
+
+```bash
+docker exec tm-kafka kafka-topics --bootstrap-server localhost:9092 \
+  --describe --topic parse.tasks.spb
+```
+
+Должно быть `PartitionCount: 3`. Если меньше — расширить (партиции можно только
+добавлять, не убавлять):
+
+```bash
+docker exec tm-kafka kafka-topics --bootstrap-server localhost:9092 \
+  --alter --topic parse.tasks.spb --partitions 3
+```
+
+### 9.2 Развернуть экземпляры парсера
+
+Каждый парсер — отдельная папка-клон со своим `.env` и своим профилем Chrome
+(профили нельзя шарить: копят собственные куки Ozon, при общем томе передерутся
+за локи). Первый парсер (`mercator_parser`) — как в части 2. Дополнительные:
+
+```bash
+cd ~
+cp -r mercator_parser mercator_parser2
+cp -r mercator_parser mercator_parser3
+```
+
+Обнулить у копий унаследованный профиль и debug, чтобы каждая копила свои куки:
+
+```bash
+rm -rf ~/mercator_parser2/app/chrome-profile/* ~/mercator_parser2/app/debug/*
+rm -rf ~/mercator_parser3/app/chrome-profile/* ~/mercator_parser3/app/debug/*
+```
+
+Дополнительным экземплярам нужен только воркер (HTTP-сервис `parsing-service`
+достаточно держать в одном экземпляре — иначе копии передерутся за порт 8010).
+Заменить их `docker-compose.yml` на worker-only:
+
+```bash
+cat > ~/mercator_parser2/docker-compose.yml << 'EOF'
+services:
+  worker:
+    build: .
+    init: true
+    command: ["python", "-m", "app.worker.run_worker"]
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+      - OZON_CHROME_PROFILE_DIR=/app/chrome-profile
+    volumes:
+      - ./app/debug:/app/app/debug
+      - ./app/chrome-profile:/app/chrome-profile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+EOF
+```
+
+То же для `mercator_parser3` (файл идентичный).
+
+### 9.3 Прописать роли
+
+В `.env` каждого экземпляра задать `PARSER_ROLE`:
+
+```bash
+# первый и второй — основные
+grep -q '^PARSER_ROLE=' ~/mercator_parser/.env  && sed -i 's/^PARSER_ROLE=.*/PARSER_ROLE=primary/' ~/mercator_parser/.env  || echo 'PARSER_ROLE=primary' >> ~/mercator_parser/.env
+grep -q '^PARSER_ROLE=' ~/mercator_parser2/.env && sed -i 's/^PARSER_ROLE=.*/PARSER_ROLE=primary/' ~/mercator_parser2/.env || echo 'PARSER_ROLE=primary' >> ~/mercator_parser2/.env
+# третий — запасной
+grep -q '^PARSER_ROLE=' ~/mercator_parser3/.env && sed -i 's/^PARSER_ROLE=.*/PARSER_ROLE=reserve/' ~/mercator_parser3/.env || echo 'PARSER_ROLE=reserve' >> ~/mercator_parser3/.env
+```
+
+Проверить:
+
+```bash
+grep -E '^PARSER_ROLE' ~/mercator_parser/.env ~/mercator_parser2/.env ~/mercator_parser3/.env
+```
+
+### 9.4 Внешние IP (source-based routing)
+
+По умолчанию Docker выпускает исходящий трафик всех контейнеров через один
+(дефолтный) IP хоста — тогда три парсера ходят на Ozon с одного адреса и смысла
+в мультипарсере нет. Чтобы каждый экземпляр выходил со своего внешнего IP,
+на хосте настраивается привязка исходящего трафика к нужному интерфейсу/адресу
+(SNAT или policy-routing) — это делается после того, как сеть выдаст отдельные
+внешние адреса. Связь парсеров с Kafka при этом остаётся внутренней
+(`host.docker.internal:9092`) и от внешних IP не зависит.
+
+### 9.5 Запустить
+
+Собрать образы можно заранее (без запуска трафика на Ozon):
+
+```bash
+cd ~/mercator_parser2 && docker compose build
+cd ~/mercator_parser3 && docker compose build
+```
+
+Поднимать экземпляры имеет смысл только когда готовы внешние IP — иначе они все
+пойдут с одного адреса. После запуска проверить, что все воркеры вошли в группу
+и разобрали партиции:
+
+```bash
+docker exec tm-kafka kafka-consumer-groups --bootstrap-server localhost:9092 \
+  --group ozon-parser-spb --describe
+```
+
+Должны быть три активных члена группы, партиции 0–2 распределены между ними,
+LAG под контролем.
+
+---
+
 ## Шпаргалка: частые команды
 
 ```bash
@@ -613,6 +732,14 @@ docker compose logs kafka --tail 50
 
 # логи парсера
 docker logs mercator_parser-worker-1 --tail 50
+
+# логи дополнительных парсеров (worker-only проекты)
+docker logs mercator_parser2-worker-1 --tail 50
+docker logs mercator_parser3-worker-1 --tail 50
+
+# кто в группе парсеров и как разобраны партиции
+docker exec tm-kafka kafka-consumer-groups --bootstrap-server localhost:9092 \
+  --group ozon-parser-spb --describe
 
 # перезапустить приложение после git pull с новым кодом
 git pull && docker compose up -d --build taskmanager
