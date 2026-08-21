@@ -28,9 +28,9 @@ import java.util.UUID;
  * вернутся (или истечёт таймаут).
  */
 @Service
-public class SetFillKafkaService {
+public class SetFillRedisService {
 
-    private static final Logger log = LoggerFactory.getLogger(SetFillKafkaService.class);
+    private static final Logger log = LoggerFactory.getLogger(SetFillRedisService.class);
 
     private final SetRepository setRepository;
     private final SetClothingRepository stratumRepository;
@@ -40,7 +40,7 @@ public class SetFillKafkaService {
     // Таймаут партии — настраиваемый, по умолчанию 4 часа.
     private final Duration batchTimeout;
 
-    public SetFillKafkaService(SetRepository setRepository,
+    public SetFillRedisService(SetRepository setRepository,
                                SetClothingRepository stratumRepository,
                                SelectTaskProducer taskProducer,
                                FillBatchRegistry batchRegistry, CardRepository cardRepository,

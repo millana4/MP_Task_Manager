@@ -16,10 +16,10 @@ public class RefillScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(RefillScheduler.class);
 
-    private final SetFillKafkaService fillService;
+    private final SetFillRedisService fillService;
     private final boolean enabled;
 
-    public RefillScheduler(SetFillKafkaService fillService,
+    public RefillScheduler(SetFillRedisService fillService,
                            @Value("${taskmanager.refill.enabled:true}") boolean enabled) {
         this.fillService = fillService;
         this.enabled = enabled;

@@ -8,7 +8,7 @@ import com.mercator.taskmanager.repository.SetClothingRepository;
 import com.mercator.taskmanager.repository.SetRepository;
 import com.mercator.taskmanager.service.FillBatch;
 import com.mercator.taskmanager.service.FillBatchRegistry;
-import com.mercator.taskmanager.service.SetFillKafkaService;
+import com.mercator.taskmanager.service.SetFillRedisService;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,7 +49,8 @@ class AsyncFillFlowTest extends PostgresTestBase {
     @Autowired SetRepository setRepository;
     @Autowired SetClothingRepository stratumRepository;
     @Autowired CardRepository cardRepository;
-    @Autowired SetFillKafkaService fillKafkaService;
+    @Autowired
+    SetFillRedisService fillKafkaService;
     @Autowired FillBatchRegistry batchRegistry;
 
     @Test

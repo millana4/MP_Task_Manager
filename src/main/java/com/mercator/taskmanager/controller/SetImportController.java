@@ -1,7 +1,7 @@
 package com.mercator.taskmanager.controller;
 
 import com.mercator.taskmanager.entity.SetEntity;
-import com.mercator.taskmanager.service.SetFillKafkaService;
+import com.mercator.taskmanager.service.SetFillRedisService;
 import com.mercator.taskmanager.service.SetFillService;
 import com.mercator.taskmanager.service.SetImportService;
 import com.mercator.taskmanager.set_csv.StratumCsvParser;
@@ -34,12 +34,12 @@ public class SetImportController {
     private final StratumCsvParser parser;
     private final SetImportService importService;
     private final SetFillService fillService;
-    private final SetFillKafkaService fillKafkaService;
+    private final SetFillRedisService fillKafkaService;
 
     public SetImportController(StratumCsvParser parser,
                                SetImportService importService,
                                SetFillService fillService,
-                               SetFillKafkaService fillKafkaService) {
+                               SetFillRedisService fillKafkaService) {
         this.parser = parser;
         this.importService = importService;
         this.fillService = fillService;
