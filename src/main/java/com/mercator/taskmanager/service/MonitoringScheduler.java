@@ -1,31 +1,41 @@
 package com.mercator.taskmanager.service;
 
 import com.mercator.taskmanager.entity.CardEntity;
-import com.mercator.taskmanager.kafka.ParseTaskMessage;
-import com.mercator.taskmanager.kafka.ParseTaskProducer;
+import com.mercator.taskmanager.redis.ParseTaskMessage;
+import com.mercator.taskmanager.redis.ParseTaskProducer;
+import com.mercator.taskmanager.redis.RedisKeys;
 import com.mercator.taskmanager.repository.CardRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Непрерывный цикл обхода: перепарсить ВСЕ активные карточки, дописать замеры.
+ * Потоковый обход без барьера. Вместо «залить все active разом и ждать всех»
+ * планировщик держит в Redis-очереди небольшой буфер задач и доливает его по
+ * мере разбора воркерами.
  *
- * Цикл не привязан к расписанию. Отправили задачи по всем активным карточкам,
- * ждём, пока придут все результаты (счётчик в MonitoringCycle обновляет
- * ParseResultConsumer). Как только собрали все (или вышел таймаут по зависшим)
- * — сразу стартует следующий цикл. Так очередь не переполняется, и каждая
- * карточка гарантированно попадает в каждый цикл (замеры равномерны).
+ * Каждый тик:
+ *   1. смотрит длину очереди parse:tasks:<гео> (LLEN);
+ *   2. добирает (buffer − LLEN) карточек-кандидатов из Postgres: самые давно
+ *      не мерянные (last_measured_at ASC NULLS FIRST), исключая те, что уже
+ *      в работе (last_enqueued_at свежее окна ожидания);
+ *   3. кладёт задачи в очередь (LPUSH через ParseTaskProducer) и помечает
+ *      last_enqueued_at, чтобы не переотправить их следующим тиком.
  *
- * "Тик" планировщика частый (проверка каждые 30с), но реально новый цикл
- * запускается ТОЛЬКО когда предыдущий завершён.
+ * Равномерность: карточку обошли → обновился last_measured_at → она уходит
+ * в хвост сортировки → вперёд выходят те, кого дольше не трогали.
+ * Потерянные задачи (результат не пришёл) сами вернутся в кандидаты, когда
+ * last_enqueued_at выйдет за окно ожидания (inflight-timeout).
  */
 @Component
 public class MonitoringScheduler {
@@ -34,76 +44,68 @@ public class MonitoringScheduler {
 
     private final CardRepository cardRepository;
     private final ParseTaskProducer parseTaskProducer;
-    private final MonitoringCycle cycle;
+    private final StringRedisTemplate redis;
+    private final RedisKeys keys;
 
-    // Таймаут цикла: сколько ждать зависшие карточки, прежде чем закрыть цикл
-    // и стартовать следующий. Не даёт застрять навсегда из-за пары карточек,
-    // чьи результаты не пришли (антибот, потеря сообщения).
-    private final Duration cycleTimeout;
+    private final int queueBuffer;
+    private final long inflightTimeoutMinutes;
+    private final String geo;
 
     public MonitoringScheduler(CardRepository cardRepository,
                                ParseTaskProducer parseTaskProducer,
-                               MonitoringCycle cycle,
-                               @Value("${taskmanager.monitoring.cycle-timeout-minutes:360}") long timeoutMinutes) {
+                               StringRedisTemplate redis,
+                               RedisKeys keys,
+                               @Value("${taskmanager.monitoring.queue-buffer}") int queueBuffer,
+                               @Value("${taskmanager.monitoring.inflight-timeout-minutes}") long inflightTimeoutMinutes,
+                               @Value("${taskmanager.geo}") String geo) {
         this.cardRepository = cardRepository;
         this.parseTaskProducer = parseTaskProducer;
-        this.cycle = cycle;
-        this.cycleTimeout = Duration.ofMinutes(timeoutMinutes);
+        this.redis = redis;
+        this.keys = keys;
+        this.queueBuffer = queueBuffer;
+        this.inflightTimeoutMinutes = inflightTimeoutMinutes;
+        this.geo = geo;
     }
 
     /**
-     * Тик проверки. Часто (каждые 30с), но реальное действие — только на
-     * границах: если цикл не идёт → запустить новый; если идёт и завершён
-     * (все результаты пришли ИЛИ таймаут) → закрыть, следующий тик запустит новый.
+     * Тик долива. Интервал берётся из конфига (refill-interval-ms).
+     * initialDelay даёт приложению и Redis подняться перед первым доливом.
      */
-    @Scheduled(fixedDelay = 30_000, initialDelay = 60_000)
-    public void tick() {
-        // Цикл идёт — проверяем, не пора ли его закрыть.
-        if (cycle.isRunning()) {
-            boolean allDone = cycle.isComplete();
-            boolean timedOut = cycle.startedAt() != null
-                    && Instant.now().isAfter(cycle.startedAt().plus(cycleTimeout));
+    @Scheduled(fixedDelayString = "${taskmanager.monitoring.refill-interval-ms}", initialDelay = 15_000)
+    @Transactional
+    public void refill() {
+        String queueKey = keys.parseTasks(geo);
 
-            if (allDone) {
-                log.info("Цикл обхода завершён: получено все {}/{} результатов за {}",
-                        cycle.received(), cycle.total(),
-                        Duration.between(cycle.startedAt(), Instant.now()));
-                cycle.finish();
-            } else if (timedOut) {
-                log.warn("Цикл обхода закрыт по таймауту: получено {}/{} (не дождались {})",
-                        cycle.received(), cycle.total(), cycle.total() - cycle.received());
-                cycle.finish();
-            }
-            return; // пока цикл идёт (или только что закрыли) — новый не стартуем в этот тик
+        Long len = redis.opsForList().size(queueKey);
+        int inQueue = (len == null) ? 0 : len.intValue();
+        int need = queueBuffer - inQueue;
+        if (need <= 0) {
+            return;  // очередь уже полна — ничего не доливаем
         }
 
-        // Цикла нет — запускаем новый обход по всем активным карточкам.
-        startNewCycle();
-    }
+        OffsetDateTime now = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        OffsetDateTime threshold = now.minusMinutes(inflightTimeoutMinutes);
 
-    private void startNewCycle() {
-        List<CardEntity> active = cardRepository.findByStatus("active");
-        if (active.isEmpty()) {
-            log.warn("Обход: активных карточек нет — цикл не запускаем");
-            return;
+        List<CardEntity> candidates = cardRepository.findQueueCandidates(threshold, need);
+        if (candidates.isEmpty()) {
+            return;  // нет активных, кого пора обойти
         }
 
-        cycle.start(active.size());
-        log.info("Цикл обхода начат: {} активных карточек", active.size());
-
-        for (CardEntity card : active) {
+        List<UUID> enqueuedIds = new ArrayList<>(candidates.size());
+        for (CardEntity card : candidates) {
             ParseTaskMessage task = new ParseTaskMessage();
             task.setTaskId(UUID.randomUUID());
             task.setCardId(card.getId());
             task.setSku(card.getSku());
-            task.setGeo(geoOfCard(card));
+            task.setGeo(geo);
             parseTaskProducer.send(task);
+            enqueuedIds.add(card.getId());
         }
-        log.info("Цикл обхода: отправлено {} задач, ждём результаты", active.size());
-    }
 
-    private String geoOfCard(CardEntity card) {
-        // TODO: card -> stratum -> set -> geo. Пока один регион.
-        return "Санкт-Петербург";
+        // Помечаем отправленные: не переотправятся, пока не выйдет окно ожидания.
+        cardRepository.markEnqueued(enqueuedIds, now);
+
+        log.info("Обход: долив очереди {} — было {}, добавлено {} (буфер {})",
+                queueKey, inQueue, enqueuedIds.size(), queueBuffer);
     }
 }

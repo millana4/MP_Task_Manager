@@ -21,7 +21,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-flyway")
-	implementation("org.springframework.boot:spring-boot-starter-kafka")
+	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.flywaydb:flyway-database-postgresql")
@@ -32,13 +32,10 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-flyway-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-kafka-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
 	testImplementation("org.testcontainers:testcontainers-junit-jupiter")
-	testImplementation("org.testcontainers:testcontainers-kafka")
-	testImplementation("org.springframework.kafka:spring-kafka-test")
 	testImplementation("org.testcontainers:testcontainers-postgresql")
 	testImplementation("org.awaitility:awaitility")
 	testCompileOnly("org.projectlombok:lombok")
@@ -51,7 +48,7 @@ tasks.withType<Test> {
 }
 
 // Обычный ./gradlew test — только быстрые тесты без внешней инфраструктуры.
-// Живые интеграционные (Kafka/ClickHouse/Postgres вживую) помечены @Tag("integration")
+// Живые интеграционные (ClickHouse/Postgres вживую) помечены @Tag("integration")
 // и по умолчанию пропускаются.
 tasks.named<Test>("test") {
 	useJUnitPlatform {
@@ -60,7 +57,7 @@ tasks.named<Test>("test") {
 }
 
 // Запуск только живых интеграционных: ./gradlew integrationTest
-// Требует поднятого docker compose (Kafka, ClickHouse) — как раньше.
+// Требует поднятого docker compose.
 tasks.register<Test>("integrationTest") {
 	description = "Живые интеграционные тесты (нужна поднятая инфраструктура)"
 	group = "verification"

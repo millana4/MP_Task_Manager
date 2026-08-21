@@ -1,13 +1,13 @@
-package com.mercator.taskmanager.kafka;
+package com.mercator.taskmanager.redis;
 
 import com.mercator.taskmanager.clickhouse.Measurement;
 import com.mercator.taskmanager.clickhouse.MeasurementRepository;
+import com.mercator.taskmanager.repository.CardRepository;
 import com.mercator.taskmanager.service.CardLifecycleService;
-import com.mercator.taskmanager.service.MonitoringCycle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -15,12 +15,12 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Принимает результаты обхода из parse.results.* (все регионы по шаблону).
- * На успех: дописывает свежий замер в ClickHouse + карточка active.
- * На неудачу: помечает карточку через жизненный цикл (failed_attempts++).
+ * Обрабатывает результат обхода (пришёл из Redis-списка parse:results:<гео>).
+ * На успех: дописывает свежий замер в ClickHouse, карточка active,
+ * проставляет last_measured_at (для потокового обхода).
+ * На неудачу: помечает карточку через жизненный цикл.
  *
- * ВАЖНО: обход НЕ создаёт новую карточку и НЕ пишет снимок каждый раз —
- * только замер (пульс цен/наличия). Снимок можно обновлять реже (отдельно).
+ * Транспорт (BRPOP из Redis) — в RedisResultListener; здесь только логика.
  */
 @Component
 public class ParseResultConsumer {
@@ -29,22 +29,22 @@ public class ParseResultConsumer {
 
     private final MeasurementRepository measurementRepository;
     private final CardLifecycleService lifecycle;
-    private final MonitoringCycle monitoringCycle;
-
+    private final CardRepository cardRepository;
     private final JsonMapper mapper = JsonMapper.builder()
             .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
             .build();
 
     public ParseResultConsumer(MeasurementRepository measurementRepository,
                                CardLifecycleService lifecycle,
-                               MonitoringCycle monitoringCycle) {
+                               CardRepository cardRepository) {
         this.measurementRepository = measurementRepository;
         this.lifecycle = lifecycle;
-        this.monitoringCycle = monitoringCycle;
+        this.cardRepository = cardRepository;
     }
 
-    @KafkaListener(topicPattern = "parse\\.results\\..*", groupId = "taskmanager")
-    public void onResult(String json) {
+    /** Обработать одно сообщение результата обхода (JSON). */
+    @Transactional
+    public void handle(String json) {
         ParseResultMessage result;
         try {
             result = mapper.readValue(json, ParseResultMessage.class);
@@ -57,14 +57,13 @@ public class ParseResultConsumer {
         if (Boolean.FALSE.equals(result.getOk()) || result.getCard() == null) {
             // Антибот/капча — сбой сборщика, карточку не штрафуем.
             if ("antibot_blocked".equals(result.getErrorCode())) {
-                log.warn("Обход card_id={} пропущен: антибот (карточка не штрафуется)",
-                        result.getCardId());
-                monitoringCycle.recordResult();
+                log.warn("Обход card_id={} пропущен: антибот (parser_id={})",
+                        result.getCardId(), result.getParserId());
                 return;
             }
-            log.warn("Обход card_id={} неуспешен: {}", result.getCardId(), result.getError());
+            log.warn("Обход card_id={} неуспешен (parser_id={}): {}",
+                    result.getCardId(), result.getParserId(), result.getError());
             lifecycle.markFailure(result.getCardId());
-            monitoringCycle.recordResult();
             return;
         }
 
@@ -75,7 +74,6 @@ public class ParseResultConsumer {
         if ("not_found".equals(buttonState)) {
             log.info("Обход card_id={}: страница удалена (404)", result.getCardId());
             lifecycle.markNotFound(result.getCardId());
-            monitoringCycle.recordResult();
             return;
         }
 
@@ -94,17 +92,20 @@ public class ParseResultConsumer {
                 .build();
         measurementRepository.insert(m);
 
+        // Потоковый обход: отметить, что карточку только что померили.
+        cardRepository.markMeasured(result.getCardId(),
+                OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+
         // Обновляем жизненный цикл по состоянию кнопки.
         if ("out_of_stock".equals(buttonState)) {
             lifecycle.markOutOfStock(result.getCardId());
-            log.info("Обход card_id={}: нет в наличии, замер записан", result.getCardId());
+            log.info("Обход card_id={}: нет в наличии, замер записан (parser_id={})",
+                    result.getCardId(), result.getParserId());
         } else {
-            // in_cart или unknown с заполненными данными — считаем живой.
             lifecycle.markInStock(result.getCardId());
-            log.info("Обход card_id={}: замер записан (button_state={})",
-                    result.getCardId(), buttonState);
+            log.info("Обход card_id={}: замер записан (button_state={}, parser_id={})",
+                    result.getCardId(), buttonState, result.getParserId());
         }
-        monitoringCycle.recordResult();
     }
 
     private Float parseFloat(String s) {

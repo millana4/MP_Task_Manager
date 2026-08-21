@@ -13,16 +13,24 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
     enabled: false
-  kafka:
-    consumer:
-      enabled: false
-    producer:
-      enabled: false
-    listener:
-      auto-startup: false
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 clickhouse:
   url: jdbc:clickhouse://localhost:8123/taskmanager?user=default&password=localtest
   username: default
   password: localtest
 main:
   allow-bean-definition-overriding: true
+taskmanager:
+  geo: Санкт-Петербург
+  monitoring:
+    queue-buffer: 10
+    refill-interval-ms: 10000
+    inflight-timeout-minutes: 15
+  redis:
+    parse-tasks-prefix: parse:tasks
+    parse-results-prefix: parse:results
+    select-tasks-prefix: select:tasks
+    select-results-prefix: select:results

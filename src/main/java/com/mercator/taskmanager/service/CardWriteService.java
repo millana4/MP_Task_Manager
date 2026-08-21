@@ -7,7 +7,6 @@ import com.mercator.taskmanager.clickhouse.MeasurementRepository;
 import com.mercator.taskmanager.contract.Ozon.OzonCard;
 import com.mercator.taskmanager.entity.CardEntity;
 import com.mercator.taskmanager.entity.SetClothingEntity;
-import com.mercator.taskmanager.kafka.SelectResultConsumer;
 import com.mercator.taskmanager.repository.CardRepository;
 import org.springframework.stereotype.Service;
 

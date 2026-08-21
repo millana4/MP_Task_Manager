@@ -8,6 +8,8 @@ import com.mercator.taskmanager.repository.SetClothingRepository;
 import com.mercator.taskmanager.repository.SetRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -20,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * Сквозной тест Postgres: сохраняем цепочку сет → страта → карточка
  * и читаем обратно, проверяя, что связи сохранились.
  */
+@SpringBootTest
+@ActiveProfiles("test")
 class PostgresIntegrationTest extends PostgresTestBase {
 
     @Autowired SetRepository setRepository;

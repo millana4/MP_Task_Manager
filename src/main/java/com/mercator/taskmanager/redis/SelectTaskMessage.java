@@ -1,4 +1,4 @@
-package com.mercator.taskmanager.kafka;
+package com.mercator.taskmanager.redis;
 
 import com.mercator.taskmanager.contract.Ozon.ExcludedCard;
 import lombok.Data;

@@ -68,6 +68,12 @@ public class CardEntity {
     @Column(name = "dropped_at")
     private OffsetDateTime droppedAt;
 
+    @Column(name = "last_measured_at")
+    private OffsetDateTime lastMeasuredAt;
+
+    @Column(name = "last_enqueued_at")
+    private OffsetDateTime lastEnqueuedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

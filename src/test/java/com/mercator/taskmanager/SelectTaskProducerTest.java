@@ -1,31 +1,38 @@
 package com.mercator.taskmanager;
 
-import com.mercator.taskmanager.kafka.SelectTaskProducer;
-import com.mercator.taskmanager.kafka.SelectTaskMessage;
-import org.junit.jupiter.api.Test;
+import com.mercator.taskmanager.redis.RedisKeys;
+import com.mercator.taskmanager.redis.SelectTaskMessage;
+import com.mercator.taskmanager.redis.SelectTaskProducer;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 /**
- * Отправляет одну задачу подбора в select.tasks (реальная Kafka).
- * Проверяем факт отправки без ошибок; содержимое топика посмотрим
- * консольной командой Kafka после теста.
+ * Отправляет задачу подбора через SelectTaskProducer и проверяет, что она
+ * реально легла в Redis-список select:tasks:spb. Живой Redis (Testcontainers).
  */
 @Tag("integration")
 @ActiveProfiles("test")
 @SpringBootTest
-class SelectTaskProducerTest {
+class SelectTaskProducerTest extends PostgresTestBase {
 
-    @Autowired
-    SelectTaskProducer producer;
+    @Autowired SelectTaskProducer producer;
+    @Autowired StringRedisTemplate redis;
+    @Autowired RedisKeys keys;
 
     @Test
-    void sendsSelectTask() {
+    void sendsSelectTaskToRedis() {
+        String key = keys.selectTasks("Санкт-Петербург");
+        redis.delete(key);  // чистим перед проверкой
+
         SelectTaskMessage task = new SelectTaskMessage();
         task.setTaskId(UUID.randomUUID());
         task.setStratumId(UUID.randomUUID());
@@ -38,7 +45,8 @@ class SelectTaskProducerTest {
 
         producer.send(task);
 
-        System.out.println(">>> Задача отправлена, task_id=" + task.getTaskId());
-        // Сообщение ушло в топик. Проверим содержимое консолью Kafka.
+        Long len = redis.opsForList().size(key);
+        assertNotNull(len);
+        assertEquals(1L, len, "Задача должна лечь в Redis-список");
     }
 }

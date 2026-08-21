@@ -3,50 +3,38 @@ package com.mercator.taskmanager;
 import com.mercator.taskmanager.entity.CardEntity;
 import com.mercator.taskmanager.entity.SetClothingEntity;
 import com.mercator.taskmanager.entity.SetEntity;
+import com.mercator.taskmanager.redis.SelectResultConsumer;
 import com.mercator.taskmanager.repository.CardRepository;
 import com.mercator.taskmanager.repository.SetClothingRepository;
 import com.mercator.taskmanager.repository.SetRepository;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
-import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Тест приёмной цепочки: кладём фейковый результат подбора в
- * select.results.spb (как будто прислал парсер) и проверяем, что
- * консьюмер прочитал его и записал карточку в Postgres.
- *
- * Требует запущенных Kafka, Postgres, ClickHouse. Парсер НЕ нужен —
- * его роль играем сами, отправляя готовый JSON результата.
+ * Тест приёмной логики подбора. Транспорт больше не нужен: вызываем
+ * SelectResultConsumer.handle(json) напрямую и проверяем, что карточка
+ * записалась в Postgres. Живой Postgres (Testcontainers).
  */
 @Tag("integration")
 @ActiveProfiles("test")
-@TestPropertySource(properties = {
-        "spring.kafka.consumer.enabled=true",
-        "spring.kafka.producer.enabled=true",
-        "spring.kafka.listener.auto-startup=true"
-})
 @SpringBootTest
-class SelectResultConsumerTest {
+class SelectResultConsumerTest extends PostgresTestBase {
 
     @Autowired SetRepository setRepository;
     @Autowired SetClothingRepository stratumRepository;
     @Autowired CardRepository cardRepository;
-    @Autowired KafkaTemplate<String, String> kafkaTemplate;
+    @Autowired SelectResultConsumer consumer;
 
     @Test
     void consumesResultAndWritesCard() {
-        // 1. Готовим сет со стратой — карточке нужно к чему привязаться.
         SetEntity set = new SetEntity();
         set.setMarketplace("ozon");
         set.setCategory("clothing");
@@ -65,13 +53,12 @@ class SelectResultConsumerTest {
         SetClothingEntity savedStratum = stratumRepository.save(stratum);
 
         UUID taskId = UUID.randomUUID();
-        String uniqueSku = "TEST" + System.currentTimeMillis();  // уникальный, чтобы не конфликтовать
+        String uniqueSku = "TEST" + System.currentTimeMillis();
 
-        // 2. Фейковый результат подбора — как его пришлёт парсер (snake_case).
-        //    Одна карточка, с task_id/stratum_id/geo эхом.
         String resultJson = """
             {
               "task_id": "%s",
+              "set_id": "%s",
               "stratum_id": "%s",
               "geo": "Санкт-Петербург",
               "ok": true,
@@ -81,41 +68,29 @@ class SelectResultConsumerTest {
                 {
                   "sku": "%s",
                   "url": "https://www.ozon.ru/product/test-%s/",
-                  "name": "Рубджа тестовая",
+                  "name": "Рубашка тестовая",
                   "brand": "TestBrand",
                   "price": { "card_price": 1282, "price": 1425, "original_price": 10000 },
                   "quantity": 85,
                   "rating": "4.9",
                   "reviews_count": "5",
-                  "characteristics": { "Материал": "Хлопок", "Коллекция": "Весна-лето 2026" },
-                  "category": "Блузы и рубашки",
-                  "variants_aspect": "Цвет",
-                  "variants": [ { "sku": "111", "value": "белый", "availability": "inStock", "price": 1282 } ],
-                  "seller": { "id": "554625", "name": "Zella", "legal_name": "ИП Калинин", "ogrn": null }
+                  "seller": { "id": "554625", "name": "Zella" }
                 }
               ]
             }
-            """.formatted(taskId, savedStratum.getId(), uniqueSku, uniqueSku);
+            """.formatted(taskId, savedSet.getId(), savedStratum.getId(), uniqueSku, uniqueSku);
 
-        // 3. Кладём результат в топик — консьюмер должен его подхватить.
-        kafkaTemplate.send("select.results.spb", resultJson);
+        // Прямой вызов логики — без брокера.
+        consumer.handle(resultJson);
 
-        // 4. Ждём (до 20 сек), пока консьюмер асинхронно запишет карточку.
-        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
-            List<CardEntity> cards =
-                    cardRepository.findByStratumId(savedStratum.getId());
-            assertFalse(cards.isEmpty(), "Консьюмер должен был записать карточку");
-            assertEquals(uniqueSku, cards.get(0).getSku());
-            assertEquals("Рубджа тестовая", cards.get(0).getName());
-        });
+        List<CardEntity> cards = cardRepository.findByStratumId(savedStratum.getId());
+        assertFalse(cards.isEmpty(), "Консьюмер должен был записать карточку");
+        assertEquals(uniqueSku, cards.get(0).getSku());
+        assertEquals("Рубашка тестовая", cards.get(0).getName());
 
-        // 5. Убираем за собой.
-        List<SetClothingEntity> strata = stratumRepository.findBySetId(savedSet.getId());
-        strata.forEach(s -> {
-            List<CardEntity> cards = cardRepository.findByStratumId(s.getId());
-            cardRepository.deleteAll(cards);
-        });
-        stratumRepository.deleteAll(strata);
+        // Уборка.
+        cardRepository.deleteAll(cards);
+        stratumRepository.deleteById(savedStratum.getId());
         setRepository.deleteById(savedSet.getId());
     }
 }

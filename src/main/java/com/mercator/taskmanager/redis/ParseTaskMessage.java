@@ -1,4 +1,4 @@
-package com.mercator.taskmanager.kafka;
+package com.mercator.taskmanager.redis;
 
 import lombok.Data;
 import java.util.UUID;

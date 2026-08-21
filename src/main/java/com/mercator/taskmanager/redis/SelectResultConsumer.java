@@ -1,4 +1,4 @@
-package com.mercator.taskmanager.kafka;
+package com.mercator.taskmanager.redis;
 
 import com.mercator.taskmanager.entity.SetClothingEntity;
 import com.mercator.taskmanager.repository.SetClothingRepository;
@@ -6,7 +6,6 @@ import com.mercator.taskmanager.service.CardWriteService;
 import com.mercator.taskmanager.service.FillBatchRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,15 +13,11 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.Optional;
 
 /**
- * Читает результаты подбора из топиков select.results.* (все регионы
- * по шаблону) и раскладывает карточки через CardWriteService.
+ * Обрабатывает результат подбора (пришёл из Redis-списка select:results:<гео>).
+ * Раскладывает карточки через CardWriteService, отмечает партию наполнения.
  *
- * По topicPattern один листенер ловит топики результатов всех регионов,
- * включая будущие: добавили регион — консьюмер сам подхватит его топик,
- * код менять не нужно.
- *
- * Привязка результата к страте — по stratum_id из самого сообщения
- * (парсер вернул его эхом). geo — тоже из сообщения, для замера.
+ * Транспорт (BRPOP из Redis) — в RedisResultListener; здесь только логика.
+ * Привязка результата к страте — по stratum_id из сообщения (эхо парсера).
  */
 @Component
 public class SelectResultConsumer {
@@ -32,32 +27,25 @@ public class SelectResultConsumer {
     private final SetClothingRepository stratumRepository;
     private final CardWriteService cardWriteService;
     private final FillBatchRegistry batchRegistry;
-    private final DlqProducer dlqProducer;
-
     private final JsonMapper mapper = JsonMapper.builder()
             .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
             .build();
 
     public SelectResultConsumer(SetClothingRepository stratumRepository,
                                 CardWriteService cardWriteService,
-                                FillBatchRegistry batchRegistry, DlqProducer dlqProducer) {
+                                FillBatchRegistry batchRegistry) {
         this.stratumRepository = stratumRepository;
         this.cardWriteService = cardWriteService;
         this.batchRegistry = batchRegistry;
-        this.dlqProducer = dlqProducer;
     }
 
-    /**
-     * Слушает все топики результатов подбора по шаблону. Spring вызывает
-     * метод на каждое пришедшее сообщение.
-     */
-    @KafkaListener(topicPattern = GeoTopics.RESULTS_PATTERN, groupId = "taskmanager")
-    public void onResult(String json) {
+    /** Обработать одно сообщение результата подбора (JSON). */
+    public void handle(String json) {
         SelectResultMessage result;
         try {
             result = mapper.readValue(json, SelectResultMessage.class);
         } catch (Exception e) {
-            dlqProducer.sendToDlq(json, "Не разобрать результат: " + e.getMessage());
+            log.error("Не разобрать результат подбора, сообщение пропущено: {}", e.getMessage());
             return;  // битое сообщение пропускаем, не застреваем
         }
 
@@ -76,7 +64,6 @@ public class SelectResultConsumer {
             return;
         }
 
-        // Находим страту по stratum_id из сообщения (парсер вернул эхом).
         Optional<SetClothingEntity> stratumOpt =
                 stratumRepository.findById(result.getStratumId());
         if (stratumOpt.isEmpty()) {
@@ -86,7 +73,6 @@ public class SelectResultConsumer {
         }
         SetClothingEntity stratum = stratumOpt.get();
 
-        // Раскладываем каждую карточку. Устойчиво: сбой одной — лог и дальше.
         int saved = 0;
         for (var card : result.getCards()) {
             try {
@@ -98,7 +84,7 @@ public class SelectResultConsumer {
             }
         }
         log.info("Результат task_id={}: записано {} карточек", result.getTaskId(), saved);
-        // Отмечаем результат в партии наполнения (по set_id из сообщения).
+
         batchRegistry.recordResult(result.getSetId(), saved);
     }
 }

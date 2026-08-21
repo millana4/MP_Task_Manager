@@ -49,35 +49,20 @@ services:
         soft: 262144
         hard: 262144
 
-  kafka:
-    image: confluentinc/cp-kafka:7.7.1
-    container_name: tm-kafka
+  redis:
+    image: redis:7-alpine
+    container_name: tm-redis
     ports:
-      - "9092:9092"          # нужен наружу — к нему подключается парсер
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@tm-kafka:29093"
-      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://tm-kafka:29092,PLAINTEXT_HOST://host.docker.internal:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
-      TZ: "Europe/Moscow"
+      - "6379:6379"          # нужен наружу — к нему подключаются парсеры-воркеры
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - redis-data:/data
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
-      test: [ "CMD-SHELL", "kafka-topics --bootstrap-server tm-kafka:29092 --list || exit 1" ]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   taskmanager:
     build: .
@@ -87,12 +72,13 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_started
-      kafka:
+      redis:
         condition: service_healthy
     ports:
       - "8080:8080"          # API наружу
     environment:
-      KAFKA_BOOTSTRAP: "tm-kafka:29092"
+      SPRING_DATA_REDIS_HOST: "tm-redis"
+      SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://tm-postgres:5432/taskmanager"
       SPRING_DATASOURCE_USERNAME: "taskmanager"
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -109,4 +95,4 @@ services:
 volumes:
   pg-data:
   ch-data:
-  kafka-data:
+  redis-data:
